@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# PyInstaller
+*.spec
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# App runtime data
+*.db
+*.db-journal
+data/
+exports/
+_tiff_cache/
