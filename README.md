@@ -73,14 +73,22 @@ python -m sem_archive.app
 3. **閲覧** タブで検索・メモ/タグ編集
 4. **抽出** タブでチェックして `.pptx` 出力
 
-## exe ビルド
+## exe ビルド / 配布
+
+### ローカル
 
 ```powershell
 .\scripts\build_windows.ps1
 ```
 
-成果物: `dist\SEM-Archive\SEM-Archive.exe`  
-フォルダごと zip して GitHub Releases に載せてください。
+成果物: `dist\SEM-Archive\SEM-Archive.exe`
+
+### GitHub Actions
+
+1. Actions の **Build Windows EXE** を `workflow_dispatch` で実行、または Release を publish
+2. 生成された `SEM-Archive-windows.zip` を Releases に添付（Release publish 時は自動添付）
+
+Python がない PC では zip を展開して `SEM-Archive.exe` を起動してください。
 
 ## テスト
 
