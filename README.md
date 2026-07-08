@@ -122,3 +122,23 @@ if QApplication.instance() is None:
     main()
 else:
     print("すでに起動済み。カーネルを再起動してからもう一度実行してね")
+
+## ビルド
+import sys, os, subprocess
+print(sys.executable)  # どのPythonか確認
+base = r"C:\Users\あなたのパス\SEM-Archive-main"
+os.chdir(base)
+subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
+subprocess.run([sys.executable, "-m", "pip", "install", "-e", "."], check=True)
+subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
+subprocess.run([
+    sys.executable, "-m", "PyInstaller",
+    "--noconfirm", "--clean", "--windowed",
+    "--name", "SEM-Archive",
+    "--paths", "src",
+    "--collect-all", "PySide6",
+    "--collect-all", "pptx",
+    "src/sem_archive/app.py",
+], check=True)
+print("できた:", os.path.abspath("dist/SEM-Archive/SEM-Archive.exe"))
+
