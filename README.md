@@ -99,3 +99,26 @@ pytest -q
 ## ライセンス
 
 MIT
+
+## 再起動前処理
+import sys
+from PySide6.QtWidgets import QApplication
+app = QApplication.instance()
+if app:
+    app.quit()
+
+## 2回目起動用コード
+import sys
+import os
+
+base = r"C:\Users\あなたのパス\SEM-Archive-main"
+sys.path.insert(0, os.path.join(base, "src"))
+
+from PySide6.QtWidgets import QApplication
+from sem_archive.app import main
+
+# 既にQApplicationがあれば作らない
+if QApplication.instance() is None:
+    main()
+else:
+    print("すでに起動済み。カーネルを再起動してからもう一度実行してね")
