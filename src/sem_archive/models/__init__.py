@@ -48,6 +48,10 @@ class FolderRecord:
     slot_id: str | None = None
     memo: str = ""
     condition: str = ""
+    substrate: str = ""
+    lot_name: str = ""
+    lot_id: str = ""
+    process: str = ""
     is_slot: bool = False
 
 

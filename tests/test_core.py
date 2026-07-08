@@ -114,9 +114,29 @@ def test_scan_and_ppt_export(tmp_path: Path) -> None:
     service = PptExportService(repo, settings)
     items = service.collect_images(case)
     assert len(items) == 3
-    assert all("Lot:LOT001, LOT002" in i.alt_text for i in items)
+    assert all("LotID:LOT001, LOT002" in i.alt_text for i in items)
     assert any(i.page_key == "S1" for i in items)
 
     out = tmp_path / "out.pptx"
     service.export(out, [case])
     assert out.exists() and out.stat().st_size > 0
+
+    # フォルダ直編集フィールドの永続化
+    slot_folder = next(f for f in saved if f.slot_id == "S1")
+    assert slot_folder.id is not None
+    repo.update_folder_field(slot_folder.id, "substrate", "Si")
+    repo.update_folder_field(slot_folder.id, "lot_name", "Alpha")
+    repo.update_folder_field(slot_folder.id, "lot_id", "L-9")
+    repo.update_folder_field(slot_folder.id, "process", "Etch")
+    updated = repo.get_folder(slot_folder.id)
+    assert updated is not None
+    assert updated.substrate == "Si"
+    assert updated.lot_name == "Alpha"
+    assert updated.lot_id == "L-9"
+    assert updated.process == "Etch"
+
+    # 既存DBへのカラム migration
+    db2 = Database(tmp_path / "test.db")
+    db2.initialize()
+    cols = {r[1] for r in db2.connection.execute("PRAGMA table_info(folders)").fetchall()}
+    assert {"substrate", "lot_name", "lot_id", "process"} <= cols

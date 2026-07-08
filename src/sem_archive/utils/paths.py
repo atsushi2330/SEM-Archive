@@ -55,3 +55,19 @@ def open_in_explorer(path: Path) -> None:
         subprocess.run(["open", target], check=False)
     else:
         subprocess.run(["xdg-open", target], check=False)
+
+
+def open_with_default_app(path: Path) -> None:
+    """OSの既定アプリでファイルを開く。"""
+    import os
+    import subprocess
+    import sys
+
+    if not path.exists():
+        return
+    if sys.platform.startswith("win"):
+        os.startfile(str(path))  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.run(["open", str(path)], check=False)
+    else:
+        subprocess.run(["xdg-open", str(path)], check=False)

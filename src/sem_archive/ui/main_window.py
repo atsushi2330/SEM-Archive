@@ -39,7 +39,6 @@ class MainWindow(QMainWindow):
 
     def _on_tab_changed(self, index: int) -> None:
         widget = self.tabs.widget(index)
-        if widget is self.browse_tab:
-            self.browse_tab.refresh_case_list()
-        elif widget is self.export_tab:
+        # 閲覧タブに戻るたびにフル再読込するとプレビューが消えて動くのでやめる
+        if widget is self.export_tab:
             self.export_tab.reload()

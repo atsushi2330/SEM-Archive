@@ -19,8 +19,8 @@ from PySide6.QtWidgets import (
 
 from sem_archive.db.connection import Database
 from sem_archive.db.repository import Repository
-from sem_archive.models import AppSettings
 from sem_archive.services.ppt_export import PptExportService
+from sem_archive.utils.paths import open_with_default_app
 
 
 class ExportTab(QWidget):
@@ -28,6 +28,7 @@ class ExportTab(QWidget):
         super().__init__(parent)
         self.db = db
         self.repo = Repository(db.connection)
+        self._last_output: Path | None = None
 
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("抽出したい SEM / フォルダにチェックを入れてください（配下画像が対象）"))
@@ -63,8 +64,12 @@ class ExportTab(QWidget):
         refresh.clicked.connect(self.reload)
         export_btn = QPushButton("PowerPointへ出力")
         export_btn.clicked.connect(self._export)
+        self.open_ppt_btn = QPushButton("出力したPowerPointを開く")
+        self.open_ppt_btn.setEnabled(False)
+        self.open_ppt_btn.clicked.connect(self._open_last_pptx)
         btn_row.addWidget(refresh)
         btn_row.addWidget(export_btn)
+        btn_row.addWidget(self.open_ppt_btn)
         layout.addLayout(btn_row)
 
         self.reload()
@@ -182,9 +187,29 @@ class ExportTab(QWidget):
         try:
             # 空リストは全体にしたいので、export 内で特別扱い
             out = self._export_with_empty_means_all(service, Path(path), semis, selection_map)
-            QMessageBox.information(self, "完了", f"出力しました:\n{out}")
+            self._last_output = out
+            self.open_ppt_btn.setEnabled(True)
+            self._show_export_done(out)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "エラー", str(exc))
+
+    def _show_export_done(self, out: Path) -> None:
+        box = QMessageBox(self)
+        box.setWindowTitle("完了")
+        box.setIcon(QMessageBox.Information)
+        box.setText(f"出力しました:\n{out}")
+        open_btn = box.addButton("PowerPointを開く", QMessageBox.AcceptRole)
+        box.addButton("閉じる", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is open_btn:
+            open_with_default_app(out)
+
+    def _open_last_pptx(self) -> None:
+        if self._last_output is None or not self._last_output.exists():
+            QMessageBox.warning(self, "未出力", "まだ出力ファイルがありません")
+            self.open_ppt_btn.setEnabled(False)
+            return
+        open_with_default_app(self._last_output)
 
     def _export_with_empty_means_all(
         self,

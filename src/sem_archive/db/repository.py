@@ -131,7 +131,11 @@ class Repository:
     def replace_folders(self, sem_case_id: int, folders: list[FolderRecord]) -> list[FolderRecord]:
         # 既存メタを引き継ぐために relative_path マップを取得
         old_rows = self.conn.execute(
-            "SELECT relative_path, memo, condition, slot_id, is_slot FROM folders WHERE sem_case_id = ?",
+            """
+            SELECT relative_path, memo, condition, slot_id, is_slot,
+                   substrate, lot_name, lot_id, process
+            FROM folders WHERE sem_case_id = ?
+            """,
             (sem_case_id,),
         ).fetchall()
         old_map = {r["relative_path"]: r for r in old_rows}
@@ -143,6 +147,10 @@ class Repository:
             old = old_map.get(folder.relative_path)
             memo = old["memo"] if old else folder.memo
             condition = old["condition"] if old else folder.condition
+            substrate = old["substrate"] if old else folder.substrate
+            lot_name = old["lot_name"] if old else folder.lot_name
+            lot_id = old["lot_id"] if old else folder.lot_id
+            process = old["process"] if old else folder.process
             slot_id = folder.slot_id
             is_slot = int(folder.is_slot)
             if old and old["slot_id"] and not folder.slot_id:
@@ -157,8 +165,8 @@ class Repository:
                 """
                 INSERT INTO folders(
                     sem_case_id, parent_id, relative_path, folder_name,
-                    slot_id, memo, condition, is_slot
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    slot_id, memo, condition, substrate, lot_name, lot_id, process, is_slot
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     sem_case_id,
@@ -168,6 +176,10 @@ class Repository:
                     slot_id,
                     memo,
                     condition,
+                    substrate,
+                    lot_name,
+                    lot_id,
+                    process,
                     is_slot,
                 ),
             )
@@ -182,6 +194,10 @@ class Repository:
                     slot_id=slot_id,
                     memo=memo,
                     condition=condition,
+                    substrate=substrate,
+                    lot_name=lot_name,
+                    lot_id=lot_id,
+                    process=process,
                     is_slot=bool(is_slot),
                 )
             )
@@ -195,6 +211,29 @@ class Repository:
         ).fetchall()
         return [self._row_to_folder(r) for r in rows]
 
+    def list_all_folders(self) -> list[tuple[SemCase, FolderRecord]]:
+        rows = self.conn.execute(
+            """
+            SELECT f.*, s.request_no, s.memo AS sem_memo, s.condition AS sem_condition,
+                   s.local_path, s.imported_at
+            FROM folders f
+            JOIN sem_cases s ON s.id = f.sem_case_id
+            ORDER BY s.request_no, f.relative_path
+            """
+        ).fetchall()
+        result: list[tuple[SemCase, FolderRecord]] = []
+        for r in rows:
+            sem = SemCase(
+                id=r["sem_case_id"],
+                request_no=r["request_no"],
+                memo=r["sem_memo"],
+                condition=r["sem_condition"],
+                local_path=r["local_path"],
+                imported_at=r["imported_at"],
+            )
+            result.append((sem, self._row_to_folder(r)))
+        return result
+
     def get_folder(self, folder_id: int) -> FolderRecord | None:
         row = self.conn.execute("SELECT * FROM folders WHERE id = ?", (folder_id,)).fetchone()
         return self._row_to_folder(row) if row else None
@@ -202,24 +241,70 @@ class Repository:
     def update_folder_meta(
         self,
         folder_id: int,
-        memo: str,
-        condition: str,
+        memo: str | None = None,
+        condition: str | None = None,
         slot_id: str | None = None,
         is_slot: bool | None = None,
+        substrate: str | None = None,
+        lot_name: str | None = None,
+        lot_id: str | None = None,
+        process: str | None = None,
     ) -> None:
         folder = self.get_folder(folder_id)
         if not folder:
             return
+        new_memo = folder.memo if memo is None else memo
+        new_condition = folder.condition if condition is None else condition
         new_slot = folder.slot_id if slot_id is None else (slot_id or None)
         new_is_slot = folder.is_slot if is_slot is None else is_slot
+        new_substrate = folder.substrate if substrate is None else substrate
+        new_lot_name = folder.lot_name if lot_name is None else lot_name
+        new_lot_id = folder.lot_id if lot_id is None else lot_id
+        new_process = folder.process if process is None else process
         self.conn.execute(
             """
             UPDATE folders
-            SET memo = ?, condition = ?, slot_id = ?, is_slot = ?
+            SET memo = ?, condition = ?, slot_id = ?, is_slot = ?,
+                substrate = ?, lot_name = ?, lot_id = ?, process = ?
             WHERE id = ?
             """,
-            (memo, condition, new_slot, int(new_is_slot), folder_id),
+            (
+                new_memo,
+                new_condition,
+                new_slot,
+                int(new_is_slot),
+                new_substrate,
+                new_lot_name,
+                new_lot_id,
+                new_process,
+                folder_id,
+            ),
         )
+        self.conn.commit()
+
+    def update_folder_field(self, folder_id: int, field: str, value: str) -> None:
+        allowed = {
+            "memo",
+            "condition",
+            "slot_id",
+            "substrate",
+            "lot_name",
+            "lot_id",
+            "process",
+        }
+        if field not in allowed:
+            raise ValueError(f"unsupported field: {field}")
+        if field == "slot_id":
+            slot = value.strip() or None
+            self.conn.execute(
+                "UPDATE folders SET slot_id = ?, is_slot = ? WHERE id = ?",
+                (slot, int(bool(slot)), folder_id),
+            )
+        else:
+            self.conn.execute(
+                f"UPDATE folders SET {field} = ? WHERE id = ?",
+                (value, folder_id),
+            )
         self.conn.commit()
 
     # ---- Tags ----
@@ -332,6 +417,7 @@ class Repository:
 
     @staticmethod
     def _row_to_folder(row: sqlite3.Row) -> FolderRecord:
+        keys = set(row.keys())
         return FolderRecord(
             id=row["id"],
             sem_case_id=row["sem_case_id"],
@@ -341,6 +427,10 @@ class Repository:
             slot_id=row["slot_id"],
             memo=row["memo"],
             condition=row["condition"],
+            substrate=row["substrate"] if "substrate" in keys else "",
+            lot_name=row["lot_name"] if "lot_name" in keys else "",
+            lot_id=row["lot_id"] if "lot_id" in keys else "",
+            process=row["process"] if "process" in keys else "",
             is_slot=bool(row["is_slot"]),
         )
 

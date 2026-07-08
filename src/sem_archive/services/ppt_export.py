@@ -68,12 +68,15 @@ class PptExportService:
                 folder_meta = self._resolve_folder_meta(parent_rel, folder_by_rel)
                 slot_id = self._resolve_slot(parent_rel, folder_by_rel)
                 condition = folder_meta.condition if folder_meta and folder_meta.condition else sem.condition
+                lot_name = folder_meta.lot_name if folder_meta else ""
+                lot_id_field = folder_meta.lot_id if folder_meta else ""
                 page_key, row_key = self._page_row_keys(parent_rel, folder_by_rel)
                 alt = " / ".join(
                     part
                     for part in [
                         condition or "(条件なし)",
-                        f"Lot:{lots or '-'}",
+                        f"LotName:{lot_name or '-'}",
+                        f"LotID:{lot_id_field or lots or '-'}",
                         f"Slot:{slot_id or '-'}",
                         f"Folder:{image_path.parent.name}",
                         f"File:{image_path.name}",
@@ -187,23 +190,23 @@ class PptExportService:
         for i, item in enumerate(items):
             left = margin_x + cell_w * i
             embed_path = prepare_for_pptx(item.path, cache_dir)
+            pic_bottom = top + image_h
             try:
+                # 幅だけ指定 → 縦横比維持。高さはセル/スライドをはみ出してOK
                 pic = slide.shapes.add_picture(
                     str(embed_path),
                     left + Inches(0.05),
                     top,
                     width=cell_w - Inches(0.1),
-                    height=image_h,
                 )
-                # アスペクト比維持のためいったん入れてから調整
-                self._fit_picture(pic, left + Inches(0.05), top, cell_w - Inches(0.1), image_h)
                 self._set_alt_text(pic, item.alt_text)
+                pic_bottom = pic.top + pic.height
             except Exception:
                 # 読めない画像はスキップしてラベルだけ
                 pass
             label_box = slide.shapes.add_textbox(
                 left,
-                top + image_h,
+                pic_bottom,
                 cell_w,
                 label_h,
             )
@@ -213,22 +216,6 @@ class PptExportService:
             p.text = item.label
             p.font.size = Pt(7)
             p.alignment = PP_ALIGN.CENTER
-
-    @staticmethod
-    def _fit_picture(pic, left, top, max_w, max_h) -> None:
-        width = int(pic.width)
-        height = int(pic.height)
-        if width <= 0 or height <= 0:
-            return
-        max_w_i = int(max_w)
-        max_h_i = int(max_h)
-        scale = min(max_w_i / width, max_h_i / height)
-        new_w = int(width * scale)
-        new_h = int(height * scale)
-        pic.width = new_w
-        pic.height = new_h
-        pic.left = int(left) + (max_w_i - new_w) // 2
-        pic.top = int(top) + (max_h_i - new_h) // 2
 
     @staticmethod
     def _set_alt_text(picture, text: str) -> None:

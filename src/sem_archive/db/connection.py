@@ -38,6 +38,7 @@ class Database:
     def initialize(self) -> None:
         conn = self.connection
         conn.executescript(SCHEMA_SQL)
+        self._migrate(conn)
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute(
                 "INSERT OR IGNORE INTO app_settings(key, value) VALUES (?, ?)",
@@ -49,6 +50,19 @@ class Database:
                 (name,),
             )
         conn.commit()
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(folders)").fetchall()}
+        additions = [
+            ("substrate", "TEXT NOT NULL DEFAULT ''"),
+            ("lot_name", "TEXT NOT NULL DEFAULT ''"),
+            ("lot_id", "TEXT NOT NULL DEFAULT ''"),
+            ("process", "TEXT NOT NULL DEFAULT ''"),
+        ]
+        for name, decl in additions:
+            if name not in cols:
+                conn.execute(f"ALTER TABLE folders ADD COLUMN {name} {decl}")
 
     def close(self) -> None:
         if self._conn is not None:

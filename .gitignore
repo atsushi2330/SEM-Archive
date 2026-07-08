@@ -31,3 +31,5 @@ Thumbs.db
 data/
 exports/
 _tiff_cache/
+*.pptx
+~$*.pptx

@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS folders (
     slot_id TEXT,
     memo TEXT NOT NULL DEFAULT '',
     condition TEXT NOT NULL DEFAULT '',
+    substrate TEXT NOT NULL DEFAULT '',
+    lot_name TEXT NOT NULL DEFAULT '',
+    lot_id TEXT NOT NULL DEFAULT '',
+    process TEXT NOT NULL DEFAULT '',
     is_slot INTEGER NOT NULL DEFAULT 0,
     UNIQUE(sem_case_id, relative_path)
 );
