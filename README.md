@@ -77,10 +77,22 @@ python -m sem_archive.app
 
 ## exe ビルド / 配布
 
-### ローカル
+### ローカル（PowerShell）
 
 ```powershell
 .\scripts\build_windows.ps1
+```
+
+### 別 PC（WinPython）
+
+1. リポジトリを clone / pull
+2. `scripts\build_windows_winpython.bat` を実行（ダブルクリック可）
+
+WinPython のパスが `C:\WPy64-31450` 以外のときは、bat 先頭の `WPYTHON_ROOT` を編集するか、実行前に次を設定:
+
+```bat
+set WPYTHON_ROOT=C:\WPy64-31450
+scripts\build_windows_winpython.bat
 ```
 
 成果物:
@@ -93,7 +105,7 @@ python -m sem_archive.app
 
 1. **フォルダ丸ごと**展開しているか確認（exe単体NG）
 2. 起動先PCに [Visual C++ 再頒布可能パッケージ (x64)](https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist) をインストール
-3. ビルドは **Python 3.12 (64bit)** 推奨。WinPython でビルドした場合は最新の `build_windows.ps1` を使う（`python312.dll` を同梱）
+3. ビルドは **Python 3.12 (64bit)** 推奨。WinPython では `build_windows_winpython.bat` または `build_windows.ps1` を使う（`python312.dll` を同梱）
 4. 再ビルド後、`dist\SEM-Archive\_internal\python312.dll`（または `python3.dll`）があるか確認
 
 ### GitHub Actions
