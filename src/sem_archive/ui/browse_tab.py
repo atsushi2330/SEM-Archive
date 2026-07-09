@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImage, QPixmap, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -29,30 +30,13 @@ from PySide6.QtWidgets import (
 from sem_archive.db.connection import Database
 from sem_archive.db.repository import Repository
 from sem_archive.models import FolderRecord, SearchFilters, SemCase
+from sem_archive.services.metadata_export import write_sem_info_file
 from sem_archive.services.tag_service import TagService
 from sem_archive.ui.dialogs import TagEditorDialog
 from sem_archive.utils.image_io import load_thumbnail
 from sem_archive.utils.paths import open_in_explorer, open_with_default_app
 
-COL_PATH = 0
-COL_SUBSTRATE = 1
-COL_LOT_NAME = 2
-COL_LOT_ID = 3
-COL_SLOT = 4
-COL_PROCESS = 5
-COL_CONDITION = 6
-COL_MEMO = 7
-
-HEADERS = ["パス", "下地", "Lot Name", "Lot ID", "Slot", "工程", "条件", "メモ"]
-FIELD_BY_COL = {
-    COL_SUBSTRATE: "substrate",
-    COL_LOT_NAME: "lot_name",
-    COL_LOT_ID: "lot_id",
-    COL_SLOT: "slot_id",
-    COL_PROCESS: "process",
-    COL_CONDITION: "condition",
-    COL_MEMO: "memo",
-}
+from sem_archive.ui.folder_columns import COL_PATH, FIELD_BY_COL, HEADERS
 
 MAX_PREVIEW_PANES = 4
 EMPTY_VALUE_LABEL = "(空白)"
@@ -67,10 +51,8 @@ class ColumnFilterPopup(QFrame):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent, Qt.Popup | Qt.FramelessWindowHint)
+        self.setObjectName("filterPopup")
         self.setFrameShape(QFrame.StyledPanel)
-        self.setStyleSheet(
-            "ColumnFilterPopup { background: #ffffff; border: 1px solid #888; }"
-        )
         self._column = 0
         self._all_values: list[str] = []
         layout = QVBoxLayout(self)
@@ -228,6 +210,7 @@ class PreviewPane(QFrame):
         self._thumb_size = thumb_size
         self._extensions = extensions or {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
         self._thumb_paths: list[Path] = []
+        self.setObjectName("previewPane")
         self.setFrameShape(QFrame.StyledPanel)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMinimumHeight(60)
@@ -238,10 +221,31 @@ class PreviewPane(QFrame):
         header = QHBoxLayout()
         self.title_label = QLabel(title)
         self.title_label.setWordWrap(True)
-        self.title_label.setStyleSheet("font-weight: bold;")
-        close_btn = QPushButton("×")
-        close_btn.setFixedWidth(28)
+        self.title_label.setStyleSheet("font-weight: bold; background: transparent;")
+        close_btn = QPushButton("閉じる")
+        close_btn.setObjectName("previewCloseBtn")
+        close_btn.setFixedHeight(30)
+        close_btn.setMinimumWidth(72)
         close_btn.setToolTip("このプレビューを閉じる")
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setStyleSheet(
+            """
+            QPushButton#previewCloseBtn {
+                background-color: #c0392b;
+                color: #ffffff;
+                border: 1px solid #96281b;
+                border-radius: 4px;
+                font-weight: bold;
+                padding: 2px 12px;
+            }
+            QPushButton#previewCloseBtn:hover {
+                background-color: #e74c3c;
+            }
+            QPushButton#previewCloseBtn:pressed {
+                background-color: #96281b;
+            }
+            """
+        )
         close_btn.clicked.connect(lambda: self.close_requested.emit(self))
         header.addWidget(self.title_label, 1)
         header.addWidget(close_btn)
@@ -255,6 +259,11 @@ class PreviewPane(QFrame):
         self.scroll.setWidget(self.thumb_host)
         layout.addWidget(self.scroll)
 
+        self.load_images()
+
+    def replace_content(self, title: str, folder_path: Path) -> None:
+        self.title_label.setText(title)
+        self.folder_path = folder_path
         self.load_images()
 
     def set_thumb_size(self, size: int) -> None:
@@ -375,9 +384,7 @@ class BrowseTab(QWidget):
         zoom_in.clicked.connect(lambda: self._change_thumb_size(1))
         clear_previews = QPushButton("プレビュー全閉じ")
         clear_previews.clicked.connect(self._clear_all_panes)
-        self.zoom_label = QLabel(
-            f"サムネ {self._thumb_size}px（行選択で追加・×で閉じる / 最大{MAX_PREVIEW_PANES}）"
-        )
+        self.zoom_label = QLabel(self._zoom_hint())
         btn_row.addWidget(explorer_btn)
         btn_row.addWidget(tag_btn)
         btn_row.addWidget(zoom_out)
@@ -404,6 +411,7 @@ class BrowseTab(QWidget):
         self.table.horizontalHeader().setSortIndicatorShown(True)
         self.table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
         self.table.itemSelectionChanged.connect(self._on_row_selected)
+        self.table.cellClicked.connect(self._on_cell_clicked)
         self.table.itemChanged.connect(self._on_item_changed)
         top_layout.addWidget(self.table, 1)
         self.main_splitter.addWidget(top)
@@ -423,7 +431,8 @@ class BrowseTab(QWidget):
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.addWidget(
             QLabel(
-                "画像プレビュー（複数選択で最大4分割 / ×で個別クローズ / ドラッグで上下リサイズ）"
+                "画像プレビュー（1枚のときはパス列クリックで表示・切替 / "
+                "2枚以上は Ctrl+クリックで追加・最大4分割 / 閉じるボタンで個別クローズ）"
             )
         )
         self.preview_splitter = QSplitter(Qt.Horizontal)
@@ -607,6 +616,12 @@ class BrowseTab(QWidget):
             return
         try:
             self.repo.update_folder_field(int(folder_id), field, item.text())
+            sem_id = data.get("sem_id")
+            if sem_id is None:
+                path_item = self.table.item(item.row(), COL_PATH)
+                sem_id = (path_item.data(Qt.UserRole) or {}).get("sem_id") if path_item else None
+            if sem_id is not None:
+                write_sem_info_file(self.repo, int(sem_id))
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "保存エラー", str(exc))
 
@@ -620,46 +635,87 @@ class BrowseTab(QWidget):
             return {}
         return path_item.data(Qt.UserRole) or {}
 
+    def _zoom_hint(self, *, status: str | None = None) -> str:
+        base = (
+            f"サムネ {self._thumb_size}px"
+            f"（1枚時は番号クリックで切替 / 2枚以上はCtrl+番号クリックで追加・最大{MAX_PREVIEW_PANES}"
+            f" / Ctrl+ホイールでズーム）"
+        )
+        return f"{base} — {status}" if status else base
+
+    def _preview_payload(self, row: int) -> tuple[str, str, Path] | None:
+        data = self._row_data(row)
+        local_path = data.get("local_path", "")
+        rel = data.get("relative_path", "")
+        display = data.get("display") or rel
+        if not local_path:
+            return None
+        folder_path = Path(local_path) / rel
+        key = str(folder_path.resolve()) if folder_path.exists() else str(folder_path)
+        return key, display, folder_path
+
+    def _on_cell_clicked(self, row: int, column: int) -> None:
+        if column != COL_PATH:
+            return
+        ctrl = bool(QApplication.keyboardModifiers() & Qt.ControlModifier)
+        pane_count = len(self._preview_panes)
+
+        if pane_count <= 1 and not ctrl:
+            if pane_count == 0:
+                self._try_add_preview_for_row(row)
+            else:
+                self._switch_single_preview(row)
+            return
+
+        if ctrl:
+            self._try_add_preview_for_row(row)
+
+    def _switch_single_preview(self, row: int) -> bool:
+        payload = self._preview_payload(row)
+        if payload is None:
+            return False
+        key, display, folder_path = payload
+        if key in self._pane_keys:
+            self.zoom_label.setText(self._zoom_hint(status="すでにプレビュー表示中"))
+            return False
+
+        pane = self._preview_panes[0]
+        old_key = next((k for k, p in self._pane_keys.items() if p is pane), None)
+        if old_key is not None:
+            del self._pane_keys[old_key]
+        self._pane_keys[key] = pane
+        pane.replace_content(display, folder_path)
+        self.zoom_label.setText(self._zoom_hint(status="プレビューを切り替えました"))
+        return True
+
+    def _try_add_preview_for_row(self, row: int) -> bool:
+        payload = self._preview_payload(row)
+        if payload is None:
+            return False
+        key, display, folder_path = payload
+        if key in self._pane_keys:
+            self.zoom_label.setText(self._zoom_hint(status="すでにプレビュー表示中"))
+            return False
+        if len(self._preview_panes) >= MAX_PREVIEW_PANES:
+            self.zoom_label.setText(
+                self._zoom_hint(status=f"上限{MAX_PREVIEW_PANES}分割。閉じるで1枚減らしてから追加")
+            )
+            return False
+        self._add_pane(key, display, folder_path)
+        self.zoom_label.setText(
+            self._zoom_hint(status=f"プレビュー {len(self._preview_panes)}/{MAX_PREVIEW_PANES}")
+        )
+        return True
+
     def _on_row_selected(self) -> None:
         rows = self._selected_row_indices()
         if not rows:
             return
 
-        # 先頭を「カレント」扱いに（タグ編集等用）
         first = self._row_data(rows[0])
         self.current_folder_id = first.get("folder_id")
         sem_id = first.get("sem_id")
         self.current_sem = self.repo.get_sem(sem_id) if sem_id else None
-
-        # 選択行をプレビューに追加するだけ。
-        # 既存paneは閉じない / 並べ替えもしない（勝手に動く原因だった）
-        added = 0
-        skipped_full = 0
-        for row in rows:
-            data = self._row_data(row)
-            local_path = data.get("local_path", "")
-            rel = data.get("relative_path", "")
-            display = data.get("display") or f"{rel}"
-            if not local_path:
-                continue
-            folder_path = Path(local_path) / rel
-            key = str(folder_path.resolve()) if folder_path.exists() else str(folder_path)
-            if key in self._pane_keys:
-                continue
-            if len(self._preview_panes) >= MAX_PREVIEW_PANES:
-                skipped_full += 1
-                continue
-            self._add_pane(key, display, folder_path)
-            added += 1
-
-        if skipped_full:
-            self.zoom_label.setText(
-                f"サムネ {self._thumb_size}px（上限{MAX_PREVIEW_PANES}分割。既存を×で閉じてから追加）"
-            )
-        elif added or self._preview_panes:
-            self.zoom_label.setText(
-                f"サムネ {self._thumb_size}px（開いているプレビュー {len(self._preview_panes)}/{MAX_PREVIEW_PANES}）"
-            )
 
     def _add_pane(self, key: str, title: str, folder_path: Path) -> None:
         # 追加前後でメイン上下スプリットの位置を保持
@@ -702,7 +758,7 @@ class BrowseTab(QWidget):
         if main_sizes and sum(main_sizes) > 0:
             self.main_splitter.setSizes(main_sizes)
         self.zoom_label.setText(
-            f"サムネ {self._thumb_size}px（開いているプレビュー {len(self._preview_panes)}/{MAX_PREVIEW_PANES}）"
+            self._zoom_hint(status=f"プレビュー {len(self._preview_panes)}/{MAX_PREVIEW_PANES}")
         )
 
     def _clear_all_panes(self) -> None:
@@ -738,8 +794,6 @@ class BrowseTab(QWidget):
     def _change_thumb_size(self, direction: int) -> None:
         new_size = self._thumb_size + (40 * direction)
         self._thumb_size = max(60, min(480, new_size))
-        self.zoom_label.setText(
-            f"サムネ {self._thumb_size}px（Ctrl+クリックで最大{MAX_PREVIEW_PANES}分割 / Ctrl+ホイール）"
-        )
+        self.zoom_label.setText(self._zoom_hint())
         for pane in self._preview_panes:
             pane.set_thumb_size(self._thumb_size)

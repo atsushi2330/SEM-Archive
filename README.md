@@ -8,7 +8,7 @@ Windows向け **SEM画像アーカイブ / 閲覧 / PowerPoint抽出** ツール
 
 ### 取込
 - 環境設定で **サーバールート** と **ローカル保存先** を指定
-- SEM依頼番号を複数入力（カンマ / 改行、または1件ずつ追加）
+- SEM依頼番号を複数入力（カンマ / 改行、またはリストから選択）
 - サーバーからフォルダごとコピー
 - Lot番号（複数）・条件・メモを SEM に紐づけ
 - Slotフォルダ（`s1` / `S1` / `slot1` など）を自動推定
@@ -68,10 +68,12 @@ python -m sem_archive.app
 
 ## 使い方（ざっくり）
 
-1. メニュー **環境設定** でサーバールート / ローカル保存先 / DB場所を設定
-2. **取込** タブで SEM依頼番号を入れてコピー
+1. メニュー **環境設定** でローカル保存先 / DB場所を設定
+2. **取込** タブでサーバーSEMフォルダを指定し、SEM依頼番号を入れてコピー（「リストから選ぶ」でサーバー上のフォルダを選択可）
 3. **閲覧** タブで検索・メモ/タグ編集
 4. **抽出** タブでチェックして `.pptx` 出力
+
+取込後は SEM依頼フォルダ内に `SEM番号_説明.txt`（例: `202607080211_説明.txt`）が生成され、Lot/条件などをソフトなしでも確認できます。
 
 ## exe ビルド / 配布
 
@@ -81,7 +83,18 @@ python -m sem_archive.app
 .\scripts\build_windows.ps1
 ```
 
-成果物: `dist\SEM-Archive\SEM-Archive.exe`
+成果物:
+- フォルダ: `dist\SEM-Archive\`（**このフォルダごと**配布）
+- ZIP: `SEM-Archive-windows.zip`（スクリプトが自動作成）
+
+**重要**: `SEM-Archive.exe` だけコピーしないこと。同フォルダ内の `_internal` なども必須です。
+
+### 起動先PCで「Failed to load Python DLL」と出るとき
+
+1. **フォルダ丸ごと**展開しているか確認（exe単体NG）
+2. 起動先PCに [Visual C++ 再頒布可能パッケージ (x64)](https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist) をインストール
+3. ビルドは **Python 3.12 (64bit)** 推奨。WinPython でビルドした場合は最新の `build_windows.ps1` を使う（`python312.dll` を同梱）
+4. 再ビルド後、`dist\SEM-Archive\_internal\python312.dll`（または `python3.dll`）があるか確認
 
 ### GitHub Actions
 

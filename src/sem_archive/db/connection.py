@@ -79,6 +79,7 @@ class Database:
             image_extensions=data.get("image_extensions", ".jpg,.jpeg,.png,.tif,.tiff"),
             export_page_mode=data.get("export_page_mode", "slot"),
             export_row_mode=data.get("export_row_mode", "subdir"),
+            theme_id=data.get("theme_id", "default"),
         )
 
     def save_settings(self, settings: AppSettings) -> None:
@@ -89,6 +90,7 @@ class Database:
             "image_extensions": settings.image_extensions,
             "export_page_mode": settings.export_page_mode,
             "export_row_mode": settings.export_row_mode,
+            "theme_id": settings.theme_id,
         }
         for key, value in pairs.items():
             self.connection.execute(

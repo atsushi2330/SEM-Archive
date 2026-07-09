@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QApplication
 
 from sem_archive.db.connection import Database
 from sem_archive.ui.main_window import MainWindow
+from sem_archive.ui.themes import apply_theme
 
 
 def main() -> int:
@@ -15,6 +16,7 @@ def main() -> int:
 
     db = Database.default()
     db.initialize()
+    apply_theme(app, db.get_settings().theme_id)
 
     window = MainWindow(db)
     window.show()

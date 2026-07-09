@@ -22,19 +22,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -e .
-          pyinstaller `
-            --noconfirm `
-            --clean `
-            --windowed `
-            --name SEM-Archive `
-            --paths src `
-            --collect-all PySide6 `
-            --collect-all pptx `
-            src/sem_archive/app.py
+          pip install pyinstaller
+          $pyDll = python -c "import sys; from pathlib import Path; b=Path(sys.base_prefix); c=[b/f'python{sys.version_info.major}{sys.version_info.minor}.dll', b/'python3.dll']; print(next((str(p.resolve()) for p in c if p.exists()), ''))"
+          $args = @('--noconfirm','--clean','--windowed','--onedir','--name','SEM-Archive','--paths','src','--collect-all','PySide6','--collect-all','pptx')
+          if ($pyDll) { $args += @('--add-binary', "$pyDll;.") }
+          $args += 'src/sem_archive/app.py'
+          python -m PyInstaller @args
       - name: Zip artifact
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/SEM-Archive/* -DestinationPath SEM-Archive-windows.zip
+          Compress-Archive -Path dist/SEM-Archive -DestinationPath SEM-Archive-windows.zip
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

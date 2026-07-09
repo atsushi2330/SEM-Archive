@@ -76,4 +76,5 @@ DEFAULT_SETTINGS = {
     "image_extensions": ".jpg,.jpeg,.png,.tif,.tiff",
     "export_page_mode": "slot",
     "export_row_mode": "subdir",
+    "theme_id": "default",
 }

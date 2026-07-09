@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -22,6 +24,8 @@ from PySide6.QtWidgets import (
 from sem_archive.db.connection import Database
 from sem_archive.models import AppSettings
 from sem_archive.services.tag_service import TagService
+from sem_archive.ui.themes import theme_labels
+from sem_archive.utils.server_paths import list_immediate_subdirs
 
 
 class SettingsDialog(QDialog):
@@ -34,7 +38,6 @@ class SettingsDialog(QDialog):
         settings = db.get_settings()
         layout = QFormLayout(self)
 
-        self.server_edit = QLineEdit(settings.server_root)
         self.local_edit = QLineEdit(settings.local_root)
         self.db_edit = QLineEdit(str(db.db_path))
         self.ext_edit = QLineEdit(settings.image_extensions)
@@ -42,7 +45,14 @@ class SettingsDialog(QDialog):
         self.per_row.setRange(1, 20)
         self.per_row.setValue(settings.images_per_row)
 
-        layout.addRow("サーバールート", self._with_browse(self.server_edit, dir_mode=True))
+        self.theme_combo = QComboBox()
+        for theme_id, label in theme_labels():
+            self.theme_combo.addItem(label, theme_id)
+        idx = self.theme_combo.findData(settings.theme_id)
+        if idx >= 0:
+            self.theme_combo.setCurrentIndex(idx)
+
+        layout.addRow("テーマカラー", self.theme_combo)
         layout.addRow("ローカル保存先", self._with_browse(self.local_edit, dir_mode=True))
         layout.addRow("SQLite DB", self._with_browse(self.db_edit, dir_mode=False))
         layout.addRow("画像拡張子", self.ext_edit)
@@ -76,12 +86,13 @@ class SettingsDialog(QDialog):
 
     def _save(self) -> None:
         settings = AppSettings(
-            server_root=self.server_edit.text().strip(),
             local_root=self.local_edit.text().strip(),
             images_per_row=self.per_row.value(),
             image_extensions=self.ext_edit.text().strip(),
             export_page_mode=self.db.get_settings().export_page_mode,
             export_row_mode=self.db.get_settings().export_row_mode,
+            server_root=self.db.get_settings().server_root,
+            theme_id=self.theme_combo.currentData() or "default",
         )
         new_db = Path(self.db_edit.text().strip())
         if new_db and new_db != self.db.db_path:
@@ -187,3 +198,71 @@ class TagEditorDialog(QDialog):
         ]
         self.tag_service.set_tags_for(self.target_type, self.target_id, ids)
         self.accept()
+
+
+class ServerFolderPickerDialog(QDialog):
+    """サーバー上のSEM依頼フォルダをチェックで選び、番号リストへ追加する。"""
+
+    def __init__(self, server_root: str, existing: set[str], parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("サーバーからフォルダを選択")
+        self.resize(480, 520)
+        self._selected: list[str] = []
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(f"サーバー: {server_root or '(未設定)'}"))
+        layout.addWidget(QLabel("取り込み候補に追加するフォルダにチェックを入れてください"))
+
+        self.list_widget = QListWidget()
+        folder_names, error = list_immediate_subdirs(server_root)
+        if error:
+            layout.addWidget(QLabel(error))
+        elif not folder_names:
+            layout.addWidget(QLabel("このフォルダの直下にサブフォルダがありません。"))
+        else:
+            checkable = (
+                Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsSelectable
+                | Qt.ItemFlag.ItemIsUserCheckable
+            )
+            for name in folder_names:
+                item = QListWidgetItem(name)
+                item.setFlags(checkable)
+                item.setCheckState(
+                    Qt.CheckState.Checked if name in existing else Qt.CheckState.Unchecked
+                )
+                self.list_widget.addItem(item)
+
+        layout.addWidget(self.list_widget)
+
+        btn_row = QHBoxLayout()
+        all_btn = QPushButton("すべて選択")
+        all_btn.clicked.connect(lambda: self._set_all(Qt.CheckState.Checked))
+        none_btn = QPushButton("すべて解除")
+        none_btn.clicked.connect(lambda: self._set_all(Qt.CheckState.Unchecked))
+        btn_row.addWidget(all_btn)
+        btn_row.addWidget(none_btn)
+        layout.addLayout(btn_row)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _set_all(self, state: Qt.CheckState) -> None:
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            if item is not None:
+                item.setCheckState(state)
+
+    def _accept(self) -> None:
+        selected: list[str] = []
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            if item is not None and item.checkState() == Qt.CheckState.Checked:
+                selected.append(item.text())
+        self._selected = selected
+        self.accept()
+
+    def selected_folders(self) -> list[str]:
+        return self._selected

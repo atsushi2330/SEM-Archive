@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sem_archive.db.repository import Repository
 from sem_archive.models import AppSettings, FolderRecord, SemCase
+from sem_archive.services.metadata_export import write_sem_info_file
 from sem_archive.utils.slot_detect import detect_slot_id
 
 
@@ -71,6 +72,7 @@ class CopyService:
                     self.repo.set_lots(case.id, lot_nos)
                 folders = ScanService.build_folder_records(case.id, dst)
                 self.repo.replace_folders(case.id, folders)
+                write_sem_info_file(self.repo, case.id)
                 results.append(
                     ImportResult(request_no, True, f"取込完了: {dst}", sem_case_id=case.id)
                 )

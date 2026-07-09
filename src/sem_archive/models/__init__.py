@@ -12,6 +12,7 @@ class AppSettings:
     export_page_mode: str = "slot"  # slot | flat
     export_row_mode: str = "subdir"  # subdir | none
     ppt_label_under_image: bool = True
+    theme_id: str = "default"
 
     def extension_set(self) -> set[str]:
         return {
